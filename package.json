@@ -4,9 +4,13 @@
   "version": "1.0.0",
   "scripts": {
     "report": "node scripts/generate-report.js",
-    "report:pdf": "node scripts/render-pdf.js"
+    "report:pdf": "node scripts/render-pdf.js",
+    "report:fuse": "node scripts/fuse-report.js"
   },
   "devDependencies": {
     "playwright": "^1.56.1"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.124.0"
   }
 }
