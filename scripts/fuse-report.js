@@ -8,7 +8,17 @@
 
 const fs = require("fs");
 const Anthropic = require("@anthropic-ai/sdk");
-const { calculateNumbers, loadGods, PLANETS } = require("./generate-report");
+const {
+  calculateNumbers,
+  loadGods,
+  buildSummaryTable,
+  formatBirthLine,
+  findSharedNumbers,
+  parseArgs,
+  parseBirthArgs,
+  PLANETS,
+} = require("./generate-report");
+const { renderPdf } = require("./render-pdf");
 
 const SYSTEM_PROMPT = `你是「占星數字塔羅」系統的報告撰寫者。這是一套以希臘神話與塔羅牌對應占星數字（1-22）的命理系統。
 
@@ -53,19 +63,42 @@ const SYSTEM_PROMPT = `你是「占星數字塔羅」系統的報告撰寫者。
 
 輸出格式：直接輸出 Markdown 格式的報告全文，不要輸出任何其他說明文字、不要用程式碼區塊包起來。`;
 
-function buildUserPrompt({ year, month, day, hour, minute, usedDefaultTime, numbers, gods }) {
+function buildUserPrompt({ birth, numbers, gods }) {
+  const shared = findSharedNumbers(numbers);
   const lines = [];
-  lines.push(`出生資訊：${year} 年 ${month} 月 ${day} 日` + (usedDefaultTime ? "（時間未知，以 12:00 計算）" : ` ${hour}:${String(minute).padStart(2, "0")}`));
+
+  lines.push(formatBirthLine(birth));
   lines.push("");
-  lines.push("以下是 13 個占星數字，各自對應的原始天神資料：");
+  lines.push("命盤總覽：");
+  lines.push("");
+  lines.push(buildSummaryTable(numbers, gods));
   lines.push("");
 
+  if (Object.keys(shared).length) {
+    lines.push("【注意】以下位置共用同一個數字，請把這個巧合寫進報告：");
+    for (const [value, names] of Object.entries(shared)) {
+      lines.push(`- ${names.join("、")} 同為 ${value}（${gods[value].title_zh}）`);
+    }
+    lines.push("");
+  }
+
+  lines.push("以下是各數字對應的原始天神資料（同一位天神只列出一次）：");
+  lines.push("");
+
+  // Each god's body goes in once even when several positions share the number.
+  const emitted = new Set();
   for (const planet of PLANETS) {
     const value = numbers[planet.key];
     const god = gods[value];
-    lines.push(`===== ${planet.name}：${value}（${god.tarot_zh} ${god.tarot_en} — ${god.title_zh}）=====`);
-    lines.push(`（此數字的一般意義：${planet.meaning}）`);
-    if (planet.timeDependent) lines.push("（此數字與出生時間相關）");
+    if (emitted.has(value)) continue;
+    emitted.add(value);
+
+    const positions = shared[value] || [planet.name];
+    lines.push(`===== ${positions.join(" ＋ ")}：${value}（${god.tarot_zh} ${god.tarot_en} — ${god.title_zh}）=====`);
+    for (const p of PLANETS) {
+      if (numbers[p.key] !== value) continue;
+      lines.push(`（${p.name}的意義：${p.meaning}${p.timeDependent ? " ※此位置與出生時間相關" : ""}）`);
+    }
     lines.push("");
     lines.push(god.body);
     lines.push("");
@@ -74,26 +107,11 @@ function buildUserPrompt({ year, month, day, hour, minute, usedDefaultTime, numb
   return lines.join("\n");
 }
 
-function parseArgs(argv) {
-  const args = {};
-  for (let i = 0; i < argv.length; i++) {
-    if (argv[i].startsWith("--")) {
-      args[argv[i].slice(2)] = argv[i + 1];
-      i++;
-    }
-  }
-  return args;
-}
-
 async function main() {
   const args = parseArgs(process.argv.slice(2));
 
-  const year = Number(args.year);
-  const month = Number(args.month);
-  const day = Number(args.day);
-
-  if (!year || !month || !day) {
-    console.error("Usage: node scripts/fuse-report.js --year YYYY --month M --day D [--hour H --minute M] [--out path.md]");
+  if (args.year === undefined || args.month === undefined || args.day === undefined) {
+    console.error("Usage: node scripts/fuse-report.js --year YYYY --month M --day D [--hour H --minute M] [--out path.md] [--pdf path.pdf]");
     process.exit(1);
   }
 
@@ -102,13 +120,10 @@ async function main() {
     process.exit(1);
   }
 
-  const usedDefaultTime = args.hour === undefined || args.minute === undefined;
-  const hour = usedDefaultTime ? 12 : Number(args.hour);
-  const minute = usedDefaultTime ? 0 : Number(args.minute);
-
-  const numbers = calculateNumbers({ year, month, day, hour, minute });
+  const birth = parseBirthArgs(args);
+  const numbers = calculateNumbers(birth);
   const gods = loadGods();
-  const userPrompt = buildUserPrompt({ year, month, day, hour, minute, usedDefaultTime, numbers, gods });
+  const userPrompt = buildUserPrompt({ birth, numbers, gods });
 
   const client = new Anthropic();
 
@@ -127,14 +142,31 @@ async function main() {
   const textBlock = response.content.find((b) => b.type === "text");
   const fusedReport = textBlock ? textBlock.text : "";
 
+  if (!fusedReport.trim()) {
+    throw new Error(`Model returned no text (stop_reason: ${response.stop_reason}).`);
+  }
+
   const outPath = args.out || "fused-report.md";
   fs.writeFileSync(outPath, fusedReport, "utf8");
-
   console.error(`Fused report written to ${outPath}`);
+
+  if (args.pdf) {
+    await renderPdf({
+      markdown: fusedReport,
+      outPath: args.pdf,
+      cover: {
+        subtitle: "個人命定報告",
+        birthLine: formatBirthLine(birth),
+        summaryTableMarkdown: buildSummaryTable(numbers, gods),
+      },
+    });
+    console.error(`PDF written to ${args.pdf}`);
+  }
+
   console.error(`Usage: input=${response.usage.input_tokens} output=${response.usage.output_tokens}`);
 }
 
 main().catch((err) => {
-  console.error(err);
+  console.error(err.message || err);
   process.exit(1);
 });

@@ -1,13 +1,21 @@
 #!/usr/bin/env node
-// Renders a generated report (see generate-report.js) into a styled PDF.
+// Renders a report into a styled A4 PDF. Used by generate-report.js output and
+// by fuse-report.js (which imports renderPdf directly).
 //
 // Usage:
 //   node scripts/render-pdf.js --year 1988 --month 11 --day 19 --hour 14 --minute 30 --out report.pdf
 
 const fs = require("fs");
-const path = require("path");
 const { chromium } = require("playwright");
-const { generateReport, calculateNumbers } = require("./generate-report");
+const {
+  generateReport,
+  calculateNumbers,
+  loadGods,
+  buildSummaryTable,
+  formatBirthLine,
+  parseArgs,
+  parseBirthArgs,
+} = require("./generate-report");
 
 function escapeHtml(str) {
   return str
@@ -17,7 +25,21 @@ function escapeHtml(str) {
 }
 
 function inlineFormat(text) {
-  return escapeHtml(text).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+  return escapeHtml(text)
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[^*])\*([^*]+?)\*(?!\*)/g, "$1<em>$2</em>");
+}
+
+function isTableRow(line) {
+  return line.trim().startsWith("|") && line.trim().endsWith("|");
+}
+
+function splitTableRow(line) {
+  return line.trim().slice(1, -1).split("|").map((cell) => cell.trim());
+}
+
+function isTableSeparator(line) {
+  return isTableRow(line) && splitTableRow(line).every((cell) => /^:?-{1,}:?$/.test(cell));
 }
 
 function markdownToHtml(markdown) {
@@ -32,7 +54,32 @@ function markdownToHtml(markdown) {
     }
   }
 
-  for (const line of lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    if (isTableRow(line)) {
+      closeList();
+      const block = [];
+      while (i < lines.length && isTableRow(lines[i])) {
+        block.push(lines[i]);
+        i++;
+      }
+      i--;
+
+      const rows = block.filter((row) => !isTableSeparator(row)).map(splitTableRow);
+      if (rows.length) {
+        const [header, ...body] = rows;
+        html.push("<table>");
+        html.push("<thead><tr>" + header.map((c) => `<th>${inlineFormat(c)}</th>`).join("") + "</tr></thead>");
+        html.push("<tbody>");
+        for (const row of body) {
+          html.push("<tr>" + row.map((c) => `<td>${inlineFormat(c)}</td>`).join("") + "</tr>");
+        }
+        html.push("</tbody></table>");
+      }
+      continue;
+    }
+
     if (line.startsWith("# ")) {
       closeList();
       html.push(`<h1>${inlineFormat(line.slice(2))}</h1>`);
@@ -62,6 +109,17 @@ function markdownToHtml(markdown) {
   return html.join("\n");
 }
 
+function buildCoverHtml({ birthLine, summaryTableMarkdown, subtitle }) {
+  return `<section class="cover">
+  <div class="cover-mark">✶</div>
+  <h1 class="cover-title">占星數字塔羅</h1>
+  <p class="cover-subtitle">${escapeHtml(subtitle)}</p>
+  <p class="cover-birth">${escapeHtml(birthLine)}</p>
+  <div class="cover-table">${markdownToHtml(summaryTableMarkdown)}</div>
+</section>
+<div class="page-break"></div>`;
+}
+
 function wrapDocument(bodyHtml, title) {
   return `<!doctype html>
 <html lang="zh-Hant">
@@ -73,7 +131,7 @@ function wrapDocument(bodyHtml, title) {
   body {
     font-family: "Noto Sans CJK TC", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", "Heiti TC", sans-serif;
     color: #2b2118;
-    line-height: 1.75;
+    line-height: 1.8;
     font-size: 13px;
   }
   h1 {
@@ -91,7 +149,7 @@ function wrapDocument(bodyHtml, title) {
     margin-bottom: 8px;
     page-break-after: avoid;
   }
-  p { margin: 6px 0; }
+  p { margin: 6px 0; text-align: justify; }
   ul { margin: 6px 0; padding-left: 22px; }
   li { margin: 3px 0; }
   blockquote {
@@ -108,6 +166,39 @@ function wrapDocument(bodyHtml, title) {
     margin: 18px 0;
   }
   strong { color: #5a3c14; }
+  em { color: #8a5a1f; font-style: italic; }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 10px 0;
+    font-size: 12.5px;
+  }
+  th, td {
+    border: 1px solid #e3d3b8;
+    padding: 5px 9px;
+    text-align: left;
+  }
+  th {
+    background: #faf3e6;
+    color: #6b4a23;
+    font-weight: 600;
+  }
+
+  .cover {
+    height: 245mm;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    text-align: center;
+  }
+  .cover-mark { font-size: 34px; color: #c9974f; margin-bottom: 10px; }
+  .cover-title { font-size: 34px; letter-spacing: 6px; margin: 0 0 6px; }
+  .cover-subtitle { font-size: 14px; color: #8a5a1f; letter-spacing: 3px; margin: 0 0 26px; text-align: center; }
+  .cover-birth { font-size: 13px; color: #6b4a23; margin: 0 0 22px; text-align: center; }
+  .cover-table { max-width: 118mm; margin: 0 auto; }
+  .cover-table th, .cover-table td { padding: 4px 8px; }
+  .page-break { page-break-after: always; }
 </style>
 </head>
 <body>
@@ -116,40 +207,38 @@ ${bodyHtml}
 </html>`;
 }
 
-function parseArgs(argv) {
-  const args = {};
-  for (let i = 0; i < argv.length; i++) {
-    if (argv[i].startsWith("--")) {
-      args[argv[i].slice(2)] = argv[i + 1];
-      i++;
-    }
+// Playwright resolves its own browser by default (the normal case after
+// `npx playwright install`). Some preinstalled images ship a build Playwright
+// doesn't look for, so fall back to whatever chrome binary is on disk.
+function findFallbackChromium() {
+  const root = process.env.PLAYWRIGHT_BROWSERS_PATH;
+  if (!root || !fs.existsSync(root)) return null;
+  for (const entry of fs.readdirSync(root)) {
+    if (!entry.startsWith("chromium-")) continue;
+    const candidate = `${root}/${entry}/chrome-linux/chrome`;
+    if (fs.existsSync(candidate)) return candidate;
   }
-  return args;
+  return null;
 }
 
-async function main() {
-  const args = parseArgs(process.argv.slice(2));
-
-  const year = Number(args.year);
-  const month = Number(args.month);
-  const day = Number(args.day);
-
-  if (!year || !month || !day) {
-    console.error("Usage: node scripts/render-pdf.js --year YYYY --month M --day D [--hour H --minute M] [--out report.pdf]");
-    process.exit(1);
+async function launchChromium() {
+  if (process.env.CHROMIUM_PATH) {
+    return chromium.launch({ executablePath: process.env.CHROMIUM_PATH });
   }
+  try {
+    return await chromium.launch();
+  } catch (err) {
+    const fallback = findFallbackChromium();
+    if (!fallback) throw err;
+    return chromium.launch({ executablePath: fallback });
+  }
+}
 
-  const usedDefaultTime = args.hour === undefined || args.minute === undefined;
-  const hour = usedDefaultTime ? 12 : Number(args.hour);
-  const minute = usedDefaultTime ? 0 : Number(args.minute);
+async function renderPdf({ markdown, outPath, title = "占星數字塔羅報告", cover = null }) {
+  const bodyHtml = (cover ? buildCoverHtml(cover) : "") + markdownToHtml(markdown);
+  const fullHtml = wrapDocument(bodyHtml, title);
 
-  const reportMarkdown = generateReport({ year, month, day, hour, minute, usedDefaultTime });
-  const bodyHtml = markdownToHtml(reportMarkdown);
-  const fullHtml = wrapDocument(bodyHtml, "占星數字塔羅報告");
-
-  const outPath = args.out || "report.pdf";
-
-  const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome" });
+  const browser = await launchChromium();
   try {
     const page = await browser.newPage();
     await page.setContent(fullHtml, { waitUntil: "load" });
@@ -157,11 +246,41 @@ async function main() {
   } finally {
     await browser.close();
   }
+}
+
+async function main() {
+  const args = parseArgs(process.argv.slice(2));
+
+  if (args.year === undefined || args.month === undefined || args.day === undefined) {
+    console.error("Usage: node scripts/render-pdf.js --year YYYY --month M --day D [--hour H --minute M] [--out report.pdf]");
+    process.exit(1);
+  }
+
+  const birth = parseBirthArgs(args);
+  const numbers = calculateNumbers(birth);
+  const gods = loadGods();
+
+  const reportMarkdown = generateReport({ ...birth, includeSummary: false });
+  const outPath = args.out || "report.pdf";
+
+  await renderPdf({
+    markdown: reportMarkdown,
+    outPath,
+    cover: {
+      subtitle: "個人命定報告",
+      birthLine: formatBirthLine(birth),
+      summaryTableMarkdown: buildSummaryTable(numbers, gods),
+    },
+  });
 
   console.error(`PDF written to ${outPath}`);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(err.message || err);
+    process.exit(1);
+  });
+}
+
+module.exports = { renderPdf, markdownToHtml, wrapDocument };
