@@ -1,112 +1,6 @@
-const PLANETS = [
-  {
-    key: "sun",
-    name: "太陽數字",
-    meaning: "生命模式、原生家庭的境遇。對應你的本命天神，是所有其他數字的計算基礎。",
-    timeDependent: false
-  },
-  {
-    key: "moon",
-    name: "月亮數字",
-    meaning: "你眼裡母親的樣子、你與母親相處的狀況。",
-    timeDependent: false
-  },
-  {
-    key: "mercury",
-    name: "水星數字",
-    meaning: "學習能力、智力、聰慧。",
-    timeDependent: false
-  },
-  {
-    key: "venus",
-    name: "金星數字",
-    meaning: "所有與情感、人際關係有關的人格面。",
-    timeDependent: false
-  },
-  {
-    key: "mars",
-    name: "火星數字",
-    meaning: "缺點、劣根性的存在、要脾氣的樣子。",
-    timeDependent: false
-  },
-  {
-    key: "jupiter",
-    name: "木星數字",
-    meaning: "生命適合發展的事業、如何茁壯、遠見。",
-    timeDependent: false
-  },
-  {
-    key: "saturn",
-    name: "土星數字",
-    meaning: "習慣的安穩、不想改變卻必須改變的部分。",
-    timeDependent: false
-  },
-  {
-    key: "uranus",
-    name: "天王星數字",
-    meaning: "自我中心的態度、是否尊崇自己原來的樣子、會不會為了別人改變自己。",
-    timeDependent: true
-  },
-  {
-    key: "neptune",
-    name: "海王星數字",
-    meaning: "天生的藝術氣息、掌管奉獻與服務。",
-    timeDependent: true
-  },
-  {
-    key: "pluto",
-    name: "冥王星數字",
-    meaning: "掌管生命功課。",
-    timeDependent: false
-  },
-  {
-    key: "ascendant",
-    name: "上升數字",
-    meaning: "掌管在他人面前展現的樣子、氣質、外型。",
-    timeDependent: false
-  },
-  {
-    key: "northNode",
-    name: "北交數字",
-    meaning: "優點、狀態好時的最佳表現。",
-    timeDependent: true
-  },
-  {
-    key: "southNode",
-    name: "南交數字",
-    meaning: "缺點、負面情緒出現時的表現。",
-    timeDependent: true
-  }
-];
-
-function reduceToRange(n) {
-  let r = n % 22;
-  if (r <= 0) r += 22;
-  return r;
-}
-
-function calculateNumbers({ year, month, day, hour, minute }) {
-  const digitSum = `${year}${month}${day}`
-    .split("")
-    .reduce((sum, ch) => sum + Number(ch), 0);
-  const sun = reduceToRange(digitSum);
-
-  return {
-    sun,
-    moon: reduceToRange(month + day),
-    mercury: reduceToRange(day),
-    venus: reduceToRange(sun + day),
-    mars: reduceToRange(sun - day),
-    jupiter: reduceToRange(sun + month),
-    saturn: reduceToRange(sun - month),
-    uranus: reduceToRange(sun + hour),
-    neptune: reduceToRange(sun - hour),
-    pluto: reduceToRange(sun + year),
-    ascendant: reduceToRange(sun - year),
-    northNode: reduceToRange(sun + minute),
-    southNode: reduceToRange(sun - minute)
-  };
-}
+// Calculation core (PLANETS, calculateNumbers) is shared with the Node
+// report scripts via lib/astrology.js, loaded before this file.
+const { PLANETS, calculateNumbers } = window.NumberTarot;
 
 const form = document.getElementById("birth-form");
 const unknownTimeCheckbox = document.getElementById("unknown-time");
@@ -118,6 +12,12 @@ const timeWarning = document.getElementById("time-warning");
 const grid = document.getElementById("grid");
 const gridPlaceholder = document.getElementById("grid-placeholder");
 const explanation = document.getElementById("explanation");
+const nameInput = document.getElementById("person-name");
+const genderSelect = document.getElementById("gender");
+const resultTitle = document.getElementById("result-title");
+const shareRow = document.getElementById("share-row");
+const shareButton = document.getElementById("share-button");
+const shareStatus = document.getElementById("share-status");
 
 unknownTimeCheckbox.addEventListener("change", () => {
   const unknown = unknownTimeCheckbox.checked;
@@ -197,10 +97,7 @@ function showExplanation(planet, value, usedDefaultTime) {
   explanation.hidden = false;
 }
 
-form.addEventListener("submit", (event) => {
-  event.preventDefault();
-  clearError();
-
+function readForm() {
   const year = Number(document.getElementById("year").value);
   const month = Number(document.getElementById("month").value);
   const day = Number(document.getElementById("day").value);
@@ -208,15 +105,19 @@ form.addEventListener("submit", (event) => {
 
   if (!year || !month || !day) {
     showError("請完整輸入年、月、日。");
-    return;
+    return null;
   }
   if (month < 1 || month > 12) {
     showError("月份請輸入 1-12。");
-    return;
+    return null;
   }
   if (day < 1 || day > 31) {
     showError("日期請輸入 1-31。");
-    return;
+    return null;
+  }
+  if (day > new Date(year, month, 0).getDate()) {
+    showError(`${year} 年 ${month} 月只有 ${new Date(year, month, 0).getDate()} 天。`);
+    return null;
   }
 
   let hour = 12;
@@ -227,20 +128,113 @@ form.addEventListener("submit", (event) => {
     const minuteVal = document.getElementById("minute").value;
     if (hourVal === "" || minuteVal === "") {
       showError("請輸入完整的時、分，或勾選「不知道確切的出生時間」。");
-      return;
+      return null;
     }
     hour = Number(hourVal);
     minute = Number(minuteVal);
     if (hour < 0 || hour > 23) {
       showError("時請輸入 0-23。");
-      return;
+      return null;
     }
     if (minute < 0 || minute > 59) {
       showError("分請輸入 0-59。");
-      return;
+      return null;
     }
   }
 
-  const numbers = calculateNumbers({ year, month, day, hour, minute });
-  renderGrid(numbers, unknownTime);
+  return {
+    year,
+    month,
+    day,
+    hour,
+    minute,
+    unknownTime,
+    name: nameInput.value.trim().slice(0, 20),
+    gender: genderSelect.value,
+  };
+}
+
+// Birth data lives in the URL so a result can be bookmarked, refreshed and
+// shared. Nothing is sent anywhere — the page recomputes from these params.
+function writeUrl(input) {
+  const params = new URLSearchParams({
+    y: input.year,
+    m: input.month,
+    d: input.day,
+  });
+  if (!input.unknownTime) {
+    params.set("h", input.hour);
+    params.set("mi", input.minute);
+  }
+  if (input.name) params.set("name", input.name);
+  if (input.gender) params.set("g", input.gender);
+  history.replaceState(null, "", `${location.pathname}?${params}`);
+}
+
+function readUrl() {
+  const params = new URLSearchParams(location.search);
+  if (!params.has("y") || !params.has("m") || !params.has("d")) return null;
+  return {
+    year: params.get("y"),
+    month: params.get("m"),
+    day: params.get("d"),
+    hour: params.get("h"),
+    minute: params.get("mi"),
+    name: params.get("name") || "",
+    gender: params.get("g") || "",
+  };
+}
+
+function applyResult(input) {
+  const numbers = calculateNumbers(input);
+  renderGrid(numbers, input.unknownTime);
+  resultTitle.textContent = input.name
+    ? `${input.name}的占星數字九宮格`
+    : "占星數字九宮格";
+  shareRow.hidden = false;
+  shareStatus.textContent = "";
+  writeUrl(input);
+}
+
+form.addEventListener("submit", (event) => {
+  event.preventDefault();
+  clearError();
+  const input = readForm();
+  if (input) applyResult(input);
 });
+
+shareButton.addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(location.href);
+    shareStatus.textContent = "已複製！";
+  } catch {
+    shareStatus.textContent = "複製失敗，請手動複製網址列。";
+  }
+  setTimeout(() => {
+    shareStatus.textContent = "";
+  }, 3000);
+});
+
+// Restore a shared or bookmarked result on load.
+(function restoreFromUrl() {
+  const saved = readUrl();
+  if (!saved) return;
+
+  document.getElementById("year").value = saved.year;
+  document.getElementById("month").value = saved.month;
+  document.getElementById("day").value = saved.day;
+  nameInput.value = saved.name;
+  genderSelect.value = saved.gender;
+
+  const hasTime = saved.hour !== null && saved.minute !== null;
+  if (hasTime) {
+    hourInput.value = saved.hour;
+    minuteInput.value = saved.minute;
+  } else {
+    unknownTimeCheckbox.checked = true;
+    unknownTimeCheckbox.dispatchEvent(new Event("change"));
+  }
+
+  const input = readForm();
+  if (input) applyResult(input);
+})();
