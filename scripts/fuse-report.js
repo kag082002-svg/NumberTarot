@@ -54,7 +54,8 @@ const SYSTEM_PROMPT = `你是「占星數字塔羅」系統的報告撰寫者。
 - 最後一行斜體說明：本報告由系統計算 13 個占星數字後融合對應天神內容撰寫而成
 
 【寫作風格】
-- 主述人稱用「這個人」，只在最後的祝福句轉為「你」。
+- 若使用者有提供稱呼，主述時就直接用那個稱呼（例如「小明」），讓報告像是專為他寫的；沒有提供稱呼時才用「這個人」。無論哪種，最後的祝福句都轉為「你」。
+- 若使用者有提供性別，敘述時使用相稱的代名詞；沒有提供時，避免假設性別。
 - 每個章節開頭要先點名這個位置對應到誰：用粗體標出天神與塔羅牌（例如「**金牛座的狄密特**」、「**天蠍座的費頓與死神牌**」），然後才展開敘述。
 - 適度直接引用原始資料裡最生動的句子，用「」括起來，例如「彷彿是心不甘情不願運轉的發電廠，非要有人逼近才會運轉，但偏偏運轉起來總是出色得不得了」。這些引用讓報告有質感，但必須逐字來自原始資料。
 - 章節之間要互相呼應：如果兩個位置在講同一件事的兩端（例如火星的情緒爆發與冥王星的壓抑功課），要明講出來，讓整篇有整體感而不是九個獨立段落。
@@ -69,6 +70,10 @@ function buildUserPrompt({ birth, numbers, gods }) {
 
   lines.push(formatBirthLine(birth));
   lines.push("");
+  if (birth.name) {
+    lines.push(`（請在報告中以「${birth.name}」稱呼這個人。）`);
+    lines.push("");
+  }
   lines.push("命盤總覽：");
   lines.push("");
   lines.push(buildSummaryTable(numbers, gods));
@@ -154,8 +159,9 @@ async function main() {
     await renderPdf({
       markdown: fusedReport,
       outPath: args.pdf,
+      title: birth.name ? `${birth.name}的占星數字塔羅報告` : "占星數字塔羅報告",
       cover: {
-        subtitle: "個人命定報告",
+        subtitle: birth.name ? `${birth.name} 的個人命定報告` : "個人命定報告",
         birthLine: formatBirthLine(birth),
         summaryTableMarkdown: buildSummaryTable(numbers, gods),
       },

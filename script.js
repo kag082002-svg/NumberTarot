@@ -12,6 +12,12 @@ const timeWarning = document.getElementById("time-warning");
 const grid = document.getElementById("grid");
 const gridPlaceholder = document.getElementById("grid-placeholder");
 const explanation = document.getElementById("explanation");
+const nameInput = document.getElementById("person-name");
+const genderSelect = document.getElementById("gender");
+const resultTitle = document.getElementById("result-title");
+const shareRow = document.getElementById("share-row");
+const shareButton = document.getElementById("share-button");
+const shareStatus = document.getElementById("share-status");
 
 unknownTimeCheckbox.addEventListener("change", () => {
   const unknown = unknownTimeCheckbox.checked;
@@ -91,10 +97,7 @@ function showExplanation(planet, value, usedDefaultTime) {
   explanation.hidden = false;
 }
 
-form.addEventListener("submit", (event) => {
-  event.preventDefault();
-  clearError();
-
+function readForm() {
   const year = Number(document.getElementById("year").value);
   const month = Number(document.getElementById("month").value);
   const day = Number(document.getElementById("day").value);
@@ -102,15 +105,19 @@ form.addEventListener("submit", (event) => {
 
   if (!year || !month || !day) {
     showError("請完整輸入年、月、日。");
-    return;
+    return null;
   }
   if (month < 1 || month > 12) {
     showError("月份請輸入 1-12。");
-    return;
+    return null;
   }
   if (day < 1 || day > 31) {
     showError("日期請輸入 1-31。");
-    return;
+    return null;
+  }
+  if (day > new Date(year, month, 0).getDate()) {
+    showError(`${year} 年 ${month} 月只有 ${new Date(year, month, 0).getDate()} 天。`);
+    return null;
   }
 
   let hour = 12;
@@ -121,20 +128,113 @@ form.addEventListener("submit", (event) => {
     const minuteVal = document.getElementById("minute").value;
     if (hourVal === "" || minuteVal === "") {
       showError("請輸入完整的時、分，或勾選「不知道確切的出生時間」。");
-      return;
+      return null;
     }
     hour = Number(hourVal);
     minute = Number(minuteVal);
     if (hour < 0 || hour > 23) {
       showError("時請輸入 0-23。");
-      return;
+      return null;
     }
     if (minute < 0 || minute > 59) {
       showError("分請輸入 0-59。");
-      return;
+      return null;
     }
   }
 
-  const numbers = calculateNumbers({ year, month, day, hour, minute });
-  renderGrid(numbers, unknownTime);
+  return {
+    year,
+    month,
+    day,
+    hour,
+    minute,
+    unknownTime,
+    name: nameInput.value.trim().slice(0, 20),
+    gender: genderSelect.value,
+  };
+}
+
+// Birth data lives in the URL so a result can be bookmarked, refreshed and
+// shared. Nothing is sent anywhere — the page recomputes from these params.
+function writeUrl(input) {
+  const params = new URLSearchParams({
+    y: input.year,
+    m: input.month,
+    d: input.day,
+  });
+  if (!input.unknownTime) {
+    params.set("h", input.hour);
+    params.set("mi", input.minute);
+  }
+  if (input.name) params.set("name", input.name);
+  if (input.gender) params.set("g", input.gender);
+  history.replaceState(null, "", `${location.pathname}?${params}`);
+}
+
+function readUrl() {
+  const params = new URLSearchParams(location.search);
+  if (!params.has("y") || !params.has("m") || !params.has("d")) return null;
+  return {
+    year: params.get("y"),
+    month: params.get("m"),
+    day: params.get("d"),
+    hour: params.get("h"),
+    minute: params.get("mi"),
+    name: params.get("name") || "",
+    gender: params.get("g") || "",
+  };
+}
+
+function applyResult(input) {
+  const numbers = calculateNumbers(input);
+  renderGrid(numbers, input.unknownTime);
+  resultTitle.textContent = input.name
+    ? `${input.name}的占星數字九宮格`
+    : "占星數字九宮格";
+  shareRow.hidden = false;
+  shareStatus.textContent = "";
+  writeUrl(input);
+}
+
+form.addEventListener("submit", (event) => {
+  event.preventDefault();
+  clearError();
+  const input = readForm();
+  if (input) applyResult(input);
 });
+
+shareButton.addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(location.href);
+    shareStatus.textContent = "已複製！";
+  } catch {
+    shareStatus.textContent = "複製失敗，請手動複製網址列。";
+  }
+  setTimeout(() => {
+    shareStatus.textContent = "";
+  }, 3000);
+});
+
+// Restore a shared or bookmarked result on load.
+(function restoreFromUrl() {
+  const saved = readUrl();
+  if (!saved) return;
+
+  document.getElementById("year").value = saved.year;
+  document.getElementById("month").value = saved.month;
+  document.getElementById("day").value = saved.day;
+  nameInput.value = saved.name;
+  genderSelect.value = saved.gender;
+
+  const hasTime = saved.hour !== null && saved.minute !== null;
+  if (hasTime) {
+    hourInput.value = saved.hour;
+    minuteInput.value = saved.minute;
+  } else {
+    unknownTimeCheckbox.checked = true;
+    unknownTimeCheckbox.dispatchEvent(new Event("change"));
+  }
+
+  const input = readForm();
+  if (input) applyResult(input);
+})();

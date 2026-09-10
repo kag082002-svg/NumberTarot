@@ -15,6 +15,8 @@ const GODS_DIR = path.join(__dirname, "..", "content", "gods");
 
 const { calculateNumbers, PLANETS } = require("../lib/astrology");
 
+const GENDER_LABELS = { female: "女", male: "男" };
+
 function parseFrontmatter(raw) {
   const match = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
   if (!match) return { data: {}, body: raw };
@@ -43,9 +45,13 @@ function loadGods() {
   return gods;
 }
 
-function formatBirthLine({ year, month, day, hour, minute, usedDefaultTime }) {
-  return `出生資訊：${year} 年 ${month} 月 ${day} 日` +
+function formatBirthLine({ year, month, day, hour, minute, usedDefaultTime, name, gender }) {
+  const who = [name ? `稱呼：${name}` : null, gender ? `性別：${GENDER_LABELS[gender] || gender}` : null]
+    .filter(Boolean)
+    .join("　");
+  const birth = `出生資訊：${year} 年 ${month} 月 ${day} 日` +
     (usedDefaultTime ? "（時間未知，以 12:00 計算）" : ` ${hour}:${String(minute).padStart(2, "0")}`);
+  return who ? `${who}\n\n${birth}` : birth;
 }
 
 // Markdown table of all 13 positions — used as the report's chart overview.
@@ -77,14 +83,14 @@ function findSharedNumbers(numbers) {
 
 // includeSummary is off when the caller renders its own cover page carrying
 // the same overview (see render-pdf.js).
-function generateReport({ year, month, day, hour, minute, usedDefaultTime, includeSummary = true }) {
+function generateReport({ year, month, day, hour, minute, usedDefaultTime, name, gender, includeSummary = true }) {
   const numbers = calculateNumbers({ year, month, day, hour, minute });
   const gods = loadGods();
 
   const lines = [];
-  lines.push(`# 占星數字塔羅報告`);
+  lines.push(name ? `# ${name}的占星數字塔羅報告` : `# 占星數字塔羅報告`);
   lines.push("");
-  lines.push(formatBirthLine({ year, month, day, hour, minute, usedDefaultTime }));
+  lines.push(formatBirthLine({ year, month, day, hour, minute, usedDefaultTime, name, gender }));
   lines.push("");
   if (includeSummary) {
     lines.push("## 命盤總覽");
@@ -178,7 +184,21 @@ function parseBirthArgs(args) {
     throw new Error(`${year} 年 ${month} 月只有 ${daysInMonth} 天（收到 --day ${day}）`);
   }
 
-  return { year, month, day, hour, minute, usedDefaultTime };
+  const gender = args.gender;
+  if (gender !== undefined && !Object.prototype.hasOwnProperty.call(GENDER_LABELS, gender)) {
+    throw new Error(`--gender 只接受 female 或 male（收到：${gender}）`);
+  }
+
+  return {
+    year,
+    month,
+    day,
+    hour,
+    minute,
+    usedDefaultTime,
+    name: args.name ? String(args.name).slice(0, 20) : "",
+    gender: gender || "",
+  };
 }
 
 function main() {
@@ -189,9 +209,7 @@ function main() {
     process.exit(1);
   }
 
-  const { year, month, day, hour, minute, usedDefaultTime } = parseBirthArgs(args);
-
-  const report = generateReport({ year, month, day, hour, minute, usedDefaultTime });
+  const report = generateReport(parseBirthArgs(args));
 
   if (args.out) {
     fs.writeFileSync(args.out, report, "utf8");
@@ -220,5 +238,6 @@ module.exports = {
   formatBirthLine,
   buildSummaryTable,
   findSharedNumbers,
+  GENDER_LABELS,
   PLANETS,
 };

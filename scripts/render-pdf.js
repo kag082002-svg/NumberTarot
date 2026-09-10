@@ -114,7 +114,11 @@ function buildCoverHtml({ birthLine, summaryTableMarkdown, subtitle }) {
   <div class="cover-mark">✶</div>
   <h1 class="cover-title">占星數字塔羅</h1>
   <p class="cover-subtitle">${escapeHtml(subtitle)}</p>
-  <p class="cover-birth">${escapeHtml(birthLine)}</p>
+  ${birthLine
+    .split("\n")
+    .filter((line) => line.trim())
+    .map((line) => `<p class="cover-birth">${escapeHtml(line)}</p>`)
+    .join("\n  ")}
   <div class="cover-table">${markdownToHtml(summaryTableMarkdown)}</div>
 </section>
 <div class="page-break"></div>`;
@@ -266,8 +270,9 @@ async function main() {
   await renderPdf({
     markdown: reportMarkdown,
     outPath,
+    title: birth.name ? `${birth.name}的占星數字塔羅報告` : "占星數字塔羅報告",
     cover: {
-      subtitle: "個人命定報告",
+      subtitle: birth.name ? `${birth.name} 的個人命定報告` : "個人命定報告",
       birthLine: formatBirthLine(birth),
       summaryTableMarkdown: buildSummaryTable(numbers, gods),
     },
