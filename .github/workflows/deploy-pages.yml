@@ -23,8 +23,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      # enablement: true lets the workflow turn Pages on itself. Without it the
+      # step fails with "Get Pages site failed ... Not Found" whenever Pages is
+      # off in repo settings, which is what happened on the first deploy.
       - name: Setup Pages
         uses: actions/configure-pages@v5
+        with:
+          enablement: true
       # Publish an explicit allowlist, never the whole repo: content/ holds the
       # source material the paid report is built from and scripts/ holds the
       # generation logic — neither belongs on a public URL. Anything not listed
