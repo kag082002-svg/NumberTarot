@@ -57,12 +57,12 @@ function formatBirthLine({ year, month, day, hour, minute, usedDefaultTime, name
 // Markdown table of all 13 positions — used as the report's chart overview.
 function buildSummaryTable(numbers, gods) {
   const lines = [];
-  lines.push("| 位置 | 數字 | 塔羅牌 | 對應天神 |");
-  lines.push("| --- | --- | --- | --- |");
+  lines.push("| 位置 | 主題 | 數字 | 塔羅牌 | 對應天神 |");
+  lines.push("| --- | --- | --- | --- | --- |");
   for (const planet of PLANETS) {
     const value = numbers[planet.key];
     const god = gods[value];
-    lines.push(`| ${planet.name} | ${value} | ${god ? god.tarot_zh : "—"} | ${god ? god.title_zh : "找不到資料"} |`);
+    lines.push(`| ${planet.name} | ${planet.theme} | ${value} | ${god ? god.tarot_zh : "—"} | ${god ? god.title_zh : "找不到資料"} |`);
   }
   return lines.join("\n");
 }
@@ -117,7 +117,7 @@ function generateReport({ year, month, day, hour, minute, usedDefaultTime, name,
       continue;
     }
 
-    lines.push(`## ${planet.name}：${value}（${god.tarot_zh} ${god.tarot_en} — ${god.title_zh}）`);
+    lines.push(`## ${planet.name}・${planet.theme}：${value}（${god.tarot_zh} ${god.tarot_en} — ${god.title_zh}）`);
     lines.push("");
     lines.push(`> ${planet.meaning}`);
     if (planet.timeDependent && usedDefaultTime) {

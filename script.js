@@ -50,11 +50,16 @@ function renderGrid(numbers, usedDefaultTime) {
     nameEl.className = "planet-name";
     nameEl.textContent = planet.name;
 
+    const themeEl = document.createElement("span");
+    themeEl.className = "planet-theme";
+    themeEl.textContent = planet.theme;
+
     const valueEl = document.createElement("span");
     valueEl.className = "planet-value";
     valueEl.textContent = numbers[planet.key];
 
     card.appendChild(nameEl);
+    card.appendChild(themeEl);
     card.appendChild(valueEl);
 
     card.addEventListener("click", () => {
@@ -79,10 +84,15 @@ function showExplanation(planet, value, usedDefaultTime) {
   const title = document.createElement("h3");
   title.textContent = `${planet.name}：${value}`;
 
+  const theme = document.createElement("p");
+  theme.className = "explanation-theme";
+  theme.textContent = planet.theme;
+
   const desc = document.createElement("p");
   desc.textContent = planet.meaning;
 
   explanation.appendChild(title);
+  explanation.appendChild(theme);
   explanation.appendChild(desc);
 
   if (planet.timeDependent && usedDefaultTime) {

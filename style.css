@@ -200,6 +200,21 @@ button[type="submit"]:hover {
   display: block;
 }
 
+.grid-card .planet-theme {
+  display: block;
+  font-size: 0.7rem;
+  color: var(--accent-dim);
+  margin-top: 0.15rem;
+  letter-spacing: 0.02em;
+}
+
+.explanation-theme {
+  margin: 0 0 0.5rem !important;
+  color: var(--accent) !important;
+  font-size: 0.85rem !important;
+  letter-spacing: 0.08em;
+}
+
 .grid-card .planet-value {
   font-size: 1.6rem;
   font-weight: 700;
