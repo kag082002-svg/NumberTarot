@@ -1,0 +1,12 @@
+{
+  "name": "numbertarot",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "report": "node scripts/generate-report.js",
+    "report:pdf": "node scripts/render-pdf.js"
+  },
+  "devDependencies": {
+    "playwright": "^1.56.1"
+  }
+}
