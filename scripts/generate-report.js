@@ -12,6 +12,7 @@ const fs = require("fs");
 const path = require("path");
 
 const GODS_DIR = path.join(__dirname, "..", "content", "gods");
+const CORRESPONDENCES_PATH = path.join(__dirname, "..", "content", "correspondences.md");
 
 const { calculateNumbers, PLANETS } = require("../lib/astrology");
 
@@ -43,6 +44,26 @@ function loadGods() {
     gods[number] = { ...data, number, body };
   }
   return gods;
+}
+
+// Keyword layer from content/correspondences.md, keyed by zodiac sign or
+// planet name ("處女座" / "火星") — the same strings the god frontmatter uses.
+function loadCorrespondences() {
+  const raw = fs.readFileSync(CORRESPONDENCES_PATH, "utf8");
+  const table = {};
+  for (const line of raw.split("\n")) {
+    if (!line.startsWith("- ")) continue;
+    const parts = line.slice(2).split("｜");
+    if (parts.length !== 3) continue;
+    const [symbol, god, keywords] = parts.map((part) => part.trim());
+    table[symbol] = { symbol, god, keywords };
+  }
+  return table;
+}
+
+// A god card carries either a zodiac sign or a planet, never both.
+function correspondenceFor(god, table) {
+  return table[god.zodiac] || table[god.planet] || null;
 }
 
 function formatBirthLine({ year, month, day, hour, minute, usedDefaultTime, name, gender }) {
@@ -238,6 +259,8 @@ module.exports = {
   formatBirthLine,
   buildSummaryTable,
   findSharedNumbers,
+  loadCorrespondences,
+  correspondenceFor,
   GENDER_LABELS,
   PLANETS,
 };

@@ -14,6 +14,8 @@ const {
   buildSummaryTable,
   formatBirthLine,
   findSharedNumbers,
+  loadCorrespondences,
+  correspondenceFor,
   parseArgs,
   parseBirthArgs,
   PLANETS,
@@ -54,6 +56,7 @@ const SYSTEM_PROMPT = `你是「占星數字塔羅」系統的報告撰寫者。
 - 最後一行斜體說明：本報告由系統計算 13 個占星數字後融合對應天神內容撰寫而成
 
 【寫作風格】
+- 部分天神會附上一組「小阿爾卡納關鍵字」（該天神對應的行星或星座的關鍵字）。這是額外的詞彙層，可用來精準描述能量的質地、或在兩位天神能量相加時推敲彼此激盪出的火花；但它與天神故事一樣屬於既有資料，同樣不得延伸杜撰。三張外行星牌（波賽頓／黑底斯／烏拉諾斯）沒有這組關鍵字，僅以天神故事解讀即可。
 - 每個位置都有一個「主題」標籤（太陽＝本命循環、月亮＝情緒的安全感、水星＝學習＆傳達、金星＝戀情＆人際關係、火星＝行動＆創造、木星＝生命格局、土星＝傳統＆制約、天王星＝創意＆自由、海王星＝愛與藝術、冥王星＝靈性發展、上升＝特質＆形象、北交＝良善＆美德、南交＝節制＆特質）。請在該章節的小標題或首句自然帶出這個主題，讓讀者知道這一段談的是哪個面向。
 - 若使用者有提供稱呼，主述時就直接用那個稱呼（例如「小明」），讓報告像是專為他寫的；沒有提供稱呼時才用「這個人」。無論哪種，最後的祝福句都轉為「你」。
 - 若使用者有提供性別，敘述時使用相稱的代名詞；沒有提供時，避免假設性別。
@@ -67,6 +70,7 @@ const SYSTEM_PROMPT = `你是「占星數字塔羅」系統的報告撰寫者。
 
 function buildUserPrompt({ birth, numbers, gods }) {
   const shared = findSharedNumbers(numbers);
+  const correspondences = loadCorrespondences();
   const lines = [];
 
   lines.push(formatBirthLine(birth));
@@ -104,6 +108,10 @@ function buildUserPrompt({ birth, numbers, gods }) {
     for (const p of PLANETS) {
       if (numbers[p.key] !== value) continue;
       lines.push(`（${p.name}｜主題：${p.theme}｜意義：${p.meaning}${p.timeDependent ? " ※此位置與出生時間相關" : ""}）`);
+    }
+    const correspondence = correspondenceFor(god, correspondences);
+    if (correspondence) {
+      lines.push(`（小阿爾卡納關鍵字｜${correspondence.symbol}・${correspondence.god}：${correspondence.keywords}）`);
     }
     lines.push("");
     lines.push(god.body);
