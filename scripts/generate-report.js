@@ -13,6 +13,7 @@ const path = require("path");
 
 const GODS_DIR = path.join(__dirname, "..", "content", "gods");
 const CORRESPONDENCES_PATH = path.join(__dirname, "..", "content", "correspondences.md");
+const ELEMENTS_PATH = path.join(__dirname, "..", "content", "elements.md");
 
 const { calculateNumbers, PLANETS } = require("../lib/astrology");
 
@@ -64,6 +65,42 @@ function loadCorrespondences() {
 // A god card carries either a zodiac sign or a planet, never both.
 function correspondenceFor(god, table) {
   return table[god.zodiac] || table[god.planet] || null;
+}
+
+// Element families from content/elements.md: the four aces group all 22
+// cards into fire / water / air / earth, one element per card.
+function loadElements() {
+  const raw = fs.readFileSync(ELEMENTS_PATH, "utf8");
+  const elements = [];
+  const sections = raw.split("\n## ").slice(1);
+  for (const section of sections) {
+    const heading = section.split("\n")[0];
+    const headingMatch = heading.match(/^(\S+)　(\S+?)：(.+)$/);
+    const cardsMatch = section.match(/^牌組：(.+)$/m);
+    if (!headingMatch || !cardsMatch) continue;
+    elements.push({
+      ace: headingMatch[1],
+      element: headingMatch[2],
+      title: headingMatch[3].trim(),
+      cards: cardsMatch[1].split("、").map((n) => Number(n.trim())),
+    });
+  }
+  return elements;
+}
+
+function elementOf(number, elements) {
+  return elements.find((entry) => entry.cards.includes(number)) || null;
+}
+
+// How the 13 positions distribute across the four elements.
+function elementBalance(numbers, elements) {
+  const counts = {};
+  for (const entry of elements) counts[entry.element] = 0;
+  for (const planet of PLANETS) {
+    const entry = elementOf(numbers[planet.key], elements);
+    if (entry) counts[entry.element]++;
+  }
+  return counts;
 }
 
 function formatBirthLine({ year, month, day, hour, minute, usedDefaultTime, name, gender }) {
@@ -261,6 +298,9 @@ module.exports = {
   findSharedNumbers,
   loadCorrespondences,
   correspondenceFor,
+  loadElements,
+  elementOf,
+  elementBalance,
   GENDER_LABELS,
   PLANETS,
 };
